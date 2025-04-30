@@ -8,6 +8,9 @@ This file contains tests for the fundamental physics required for rainbow simula
 - Medium properties
 - Detector functionality
 """
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'src')))
 
 import numpy as np
 import matplotlib.pyplot as plt
