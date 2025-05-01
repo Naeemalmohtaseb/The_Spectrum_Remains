@@ -1,152 +1,248 @@
 import numpy as np
-from typing import List, Tuple, Optional, Union, Dict, Any
+from typing import List, Tuple, Dict, Optional, Union, Any
 
 class Photon:
     """
-    Represents a spectral photon in the rainbow simulation with wavelength-dependent properties.
+    Represents a spectral photon in 3D space with wavelength-dependent properties.
     
-    Attributes:
-        position (np.ndarray): 3D position vector [x, y, z]
-        direction (np.ndarray): 3D normalized direction vector
-        wavelength (float): Wavelength in nanometers
-        intensity (float): Current intensity of the photon (1.0 = full energy)
-        polarization (np.ndarray): Polarization vector (optional)
-        path (List[np.ndarray]): List of positions for path tracking
-        alive (bool): Whether the photon is still active in the simulation
+    This enhanced photon model supports:
+    - 3D position and direction vectors
+    - Wavelength-dependent properties
+    - Intensity tracking for reflections/refractions
+    - Path history for visualization
     """
     
     def __init__(self, 
-                 position: List[float] = None, 
-                 direction: List[float] = None, 
+                 position: Union[List[float], np.ndarray] = None, 
+                 direction: Union[List[float], np.ndarray] = None, 
                  wavelength: float = 550.0,
                  intensity: float = 1.0,
-                 polarization: List[float] = None):
+                 polarization: Union[List[float], np.ndarray] = None,
+                 is_spectral_component: bool = False):
         """
-        Initialize a new spectral photon.
+        Initialize a photon with position, direction, wavelength and other properties.
         
         Args:
-            position: Initial position [x, y, z], defaults to [0, 0, 0]
-            direction: Initial direction vector, defaults to [0, 0, 1] (z-axis)
+            position: 3D position vector [x, y, z]
+            direction: 3D direction vector
             wavelength: Wavelength in nanometers (visible range ~380-750nm)
-            intensity: Initial intensity, defaults to 1.0
+            intensity: Initial intensity (1.0 = full)
             polarization: Polarization vector (optional)
+            is_spectral_component: If True, photon is part of a white light ray
         """
-        self.position = np.array(position if position is not None else [0, 0, 0], dtype=float)
-        self.direction = self._normalize(np.array(direction if direction is not None else [0, 0, 1], dtype=float))
+        # Initialize position
+        if position is None:
+            self.position = np.array([0.0, 0.0, 0.0])
+        else:
+            self.position = np.array(position, dtype=float)
+        
+        # Initialize direction (normalize it)
+        if direction is None:
+            self.direction = np.array([0.0, 0.0, 1.0])
+        else:
+            self.direction = np.array(direction, dtype=float)
+            self.direction = self.direction / np.linalg.norm(self.direction)
+        
+        # Wavelength and intensity
         self.wavelength = float(wavelength)
         self.intensity = float(intensity)
+        self.is_spectral_component = is_spectral_component
         
-        # Initialize polarization if provided (important for accurate rainbow physics)
+        # Initialize polarization if provided
         if polarization is not None:
-            self.polarization = self._normalize(np.array(polarization, dtype=float))
+            self.polarization = np.array(polarization, dtype=float)
+            self.polarization = self.polarization / np.linalg.norm(self.polarization)
         else:
             # Default polarization perpendicular to direction
             if abs(self.direction[2]) < 0.9:
-                # Not aligned with z-axis, use cross product with z-axis
-                self.polarization = self._normalize(np.cross([0, 0, 1], self.direction))
+                self.polarization = np.cross([0, 0, 1], self.direction)
             else:
-                # Aligned with z-axis, use cross product with x-axis
-                self.polarization = self._normalize(np.cross([1, 0, 0], self.direction))
+                self.polarization = np.cross([1, 0, 0], self.direction)
+            self.polarization = self.polarization / np.linalg.norm(self.polarization)
         
-        self.path = [self.position.copy()]  # Track path for visualization
-        self.alive = True
+        # Path history
+        self.path = [self.position.copy()]
+        self.active = True
         
-        # Additional attributes for rainbow simulation
-        self.num_reflections = 0  # Track number of internal reflections
-        self.phase = 0.0  # For modeling interference effects (optional)
+        # For rainbow simulation
+        self.reflection_count = 0
     
-    def _normalize(self, vector: np.ndarray) -> np.ndarray:
-        """Normalize a vector to unit length."""
-        norm = np.linalg.norm(vector)
-        if norm < 1e-10:  # Avoid division by zero
-            return np.array([0, 0, 1])  # Default direction if zero vector
-        return vector / norm
-    
-    def move(self, step_size: float) -> None:
+    def move(self, distance: float) -> None:
         """
         Move the photon along its current direction.
         
         Args:
-            step_size: Distance to move
+            distance: Distance to move
         """
-        self.position += step_size * self.direction
+        self.position = self.position + distance * self.direction
         self.path.append(self.position.copy())
     
     def reflect(self, normal: np.ndarray) -> None:
         """
-        Reflect the photon direction based on a surface normal.
+        Reflect the photon at a surface with the given normal.
         
         Args:
-            normal: Surface normal vector (must be normalized)
+            normal: Normal vector at reflection point (should be normalized)
         """
+        # Ensure normal is normalized
+        normal = normal / np.linalg.norm(normal)
+        
         # Calculate reflection direction: r = d - 2(d·n)n
         dot_product = np.dot(self.direction, normal)
-        self.direction = self.direction - 2 * dot_product * normal
+        self.direction = self.direction - 2.0 * dot_product * normal
         
-        # Update polarization (reflect polarization vector as well)
-        # For accurate rainbow physics, polarization changes must be modeled
-        # This is a simplified approach
-        dot_product_pol = np.dot(self.polarization, normal)
-        if abs(dot_product_pol) > 1e-10:  # Only update if not perpendicular
-            self.polarization = self.polarization - 2 * dot_product_pol * normal
-            self.polarization = self._normalize(self.polarization)
+        # Update polarization
+        dot_pol = np.dot(self.polarization, normal)
+        if abs(dot_pol) > 1e-10:
+            self.polarization = self.polarization - 2.0 * dot_pol * normal
+            self.polarization = self.polarization / np.linalg.norm(self.polarization)
         
-        self.num_reflections += 1
+        # Increment reflection count
+        self.reflection_count += 1
     
     def refract(self, normal: np.ndarray, n1: float, n2: float) -> bool:
         """
-        Refract the photon at a medium boundary.
+        Refract the photon at a medium interface.
         
         Args:
-            normal: Surface normal vector (must be normalized)
+            normal: Surface normal (normalized)
             n1: Refractive index of current medium
-            n2: Refractive index of medium being entered
+            n2: Refractive index of new medium
             
         Returns:
             True if refraction occurred, False if total internal reflection
         """
-        # Calculate refraction direction using Snell's law
-        # Make sure normal points in the right direction (against incident ray)
+        # Ensure normal is normalized
+        normal = normal / np.linalg.norm(normal)
+        
+        # Make sure normal points against incident direction
         dot_product = np.dot(self.direction, normal)
         if dot_product > 0:
-            normal = -normal  # Flip normal if it's not against incident ray
+            normal = -normal
             dot_product = -dot_product
         
-        # Calculate sin(theta_t) using Snell's law: n1*sin(theta_i) = n2*sin(theta_t)
-        sin_theta_i = np.sqrt(1 - dot_product**2)  # sin(theta_i) = sqrt(1 - cos^2(theta_i))
+        # Calculate sin(theta_t) using Snell's law
+        sin_theta_i = np.sqrt(1.0 - dot_product**2)
         sin_theta_t = (n1 / n2) * sin_theta_i
         
         # Check for total internal reflection
         if sin_theta_t >= 1.0:
-            # Total internal reflection occurs
             self.reflect(normal)
             return False
         
         # Calculate refracted direction
-        cos_theta_t = np.sqrt(1 - sin_theta_t**2)
-        refracted_dir = (n1 / n2) * self.direction - ((n1 / n2) * dot_product + cos_theta_t) * normal
+        cos_theta_t = np.sqrt(1.0 - sin_theta_t**2)
+        self.direction = (n1 / n2) * self.direction + \
+                         ((n1 / n2) * dot_product - cos_theta_t) * normal
+        self.direction = self.direction / np.linalg.norm(self.direction)
         
-        # Update direction
-        self.direction = self._normalize(refracted_dir)
-        
-        # Update polarization (simplified model)
-        # For a complete model, implement Fresnel equations for polarization components
-        # This is important for accurate rainbow intensity patterns
-        
+        # Update polarization (simplified)
         return True
+    
+    def calculate_fresnel(self, normal: np.ndarray, n1: float, n2: float) -> Tuple[float, float]:
+        """
+        Calculate Fresnel coefficients for reflection and transmission.
+        
+        Args:
+            normal: Surface normal (normalized)
+            n1: Refractive index of current medium
+            n2: Refractive index of new medium
+            
+        Returns:
+            Tuple of (reflection coefficient, transmission coefficient)
+        """
+        # Ensure normal is normalized and points against incident direction
+        normal = normal / np.linalg.norm(normal)
+        cos_theta_i = -np.dot(self.direction, normal)
+        
+        if cos_theta_i < 0:
+            normal = -normal
+            cos_theta_i = -cos_theta_i
+        
+        # Calculate sin(theta_t) using Snell's law
+        sin_theta_i = np.sqrt(1.0 - cos_theta_i**2)
+        sin_theta_t = (n1 / n2) * sin_theta_i
+        
+        # Check for total internal reflection
+        if sin_theta_t >= 1.0:
+            return 1.0, 0.0
+        
+        cos_theta_t = np.sqrt(1.0 - sin_theta_t**2)
+        
+        # Calculate reflection coefficients for s and p polarizations
+        r_s = ((n1 * cos_theta_i - n2 * cos_theta_t) / 
+               (n1 * cos_theta_i + n2 * cos_theta_t))**2
+        
+        r_p = ((n1 * cos_theta_t - n2 * cos_theta_i) / 
+               (n1 * cos_theta_t + n2 * cos_theta_i))**2
+        
+        # Calculate average for unpolarized light
+        r = (r_s + r_p) / 2.0
+        
+        # Transmission coefficient from conservation of energy
+        t = 1.0 - r
+        
+        return r, t
+    
+    def split(self, normal: np.ndarray, n1: float, n2: float) -> Optional['Photon']:
+        """
+        Split the photon into reflected and transmitted components.
+        
+        Args:
+            normal: Surface normal
+            n1: Refractive index of current medium
+            n2: Refractive index of new medium
+            
+        Returns:
+            New photon representing the reflected component if split occurs,
+            None otherwise
+        """
+        r, t = self.calculate_fresnel(normal, n1, n2)
+        
+        # If reflection is negligible, don't split
+        if r < 0.01:
+            # Just refract the current photon
+            self.refract(normal, n1, n2)
+            return None
+        
+        # If transmission is negligible, just reflect
+        if t < 0.01:
+            self.reflect(normal)
+            return None
+        
+        # Create new photon for reflected component
+        reflected = Photon(
+            position=self.position.copy(),
+            direction=self.direction.copy(),
+            wavelength=self.wavelength,
+            intensity=self.intensity * r,
+            polarization=self.polarization.copy(),
+            is_spectral_component=self.is_spectral_component
+        )
+        
+        # Reflect the new photon
+        reflected.reflect(normal)
+        reflected.path = self.path.copy()
+        reflected.reflection_count = self.reflection_count + 1
+        
+        # Refract the current photon
+        self.refract(normal, n1, n2)
+        self.intensity *= t
+        
+        return reflected
     
     def get_rgb_color(self) -> Tuple[float, float, float]:
         """
-        Convert photon wavelength to RGB color for visualization.
+        Convert wavelength to RGB color for visualization.
         
         Returns:
             Tuple of (R, G, B) values in range [0, 1]
         """
         # Visible spectrum is approximately 380-750 nm
         if self.wavelength < 380 or self.wavelength > 750:
-            return (0.0, 0.0, 0.0)  # Outside visible spectrum
+            return (0.0, 0.0, 0.0)
         
-        # Approximate conversion based on the CIE standard observer
+        # Approximate conversion based on wavelength
         if self.wavelength < 440:
             # Violet/Blue
             r = (440 - self.wavelength) / (440 - 380)
@@ -178,7 +274,7 @@ class Photon:
             g = 0.0
             b = 0.0
         
-        # Scale RGB values based on intensity perception
+        # Scale intensity at spectrum edges
         gamma = 0.8
         if self.wavelength < 420:
             factor = 0.3 + 0.7 * (self.wavelength - 380) / (420 - 380)
@@ -187,69 +283,128 @@ class Photon:
         else:
             factor = 1.0
         
+        # Apply gamma correction
         r = pow(r * factor, gamma)
         g = pow(g * factor, gamma)
         b = pow(b * factor, gamma)
         
         return (r, g, b)
     
-    def get_spectral_bin(self, num_bins: int = 64) -> int:
-        """
-        Map wavelength to a spectral bin for color combination.
-        
-        Args:
-            num_bins: Number of spectral bins to use
-            
-        Returns:
-            Bin index in range [0, num_bins-1]
-        """
-        # Visible spectrum roughly 380-750nm
-        min_wl, max_wl = 380, 750
-        normalized = (self.wavelength - min_wl) / (max_wl - min_wl)
-        bin_index = int(normalized * num_bins)
-        return max(0, min(bin_index, num_bins-1))  # Clamp to valid range
-    
     def terminate(self) -> None:
-        """Mark the photon as terminated (no longer active in simulation)."""
-        self.alive = False
+        """Mark the photon as terminated."""
+        self.active = False
     
     def is_alive(self) -> bool:
         """Check if the photon is still active."""
-        return self.alive and self.intensity > 0.0
+        return self.active and self.intensity > 0.001
+
+class WhiteLight:
+    """
+    Represents a white light ray composed of multiple wavelengths in 3D space.
     
-    def get_path(self) -> np.ndarray:
-        """Return the complete path history of the photon."""
-        return np.array(self.path)
+    This class handles the generation and management of multiple spectral components
+    for simulating dispersion effects like rainbows.
+    """
     
-    def split(self, split_factor: float = 0.5) -> 'Photon':
+    def __init__(self, 
+                 position: Union[List[float], np.ndarray],
+                 direction: Union[List[float], np.ndarray],
+                 num_wavelengths: int = 30,
+                 intensity: float = 1.0):
         """
-        Split the photon into two for handling partial reflection/refraction.
+        Initialize a white light ray with spectral components.
         
         Args:
-            split_factor: Factor determining intensity split between original and new photon
-            
-        Returns:
-            New photon with portion of the intensity
+            position: 3D position [x, y, z]
+            direction: 3D direction vector
+            num_wavelengths: Number of wavelength components to simulate
+            intensity: Initial intensity of the light
         """
-        # Create a new photon with the same properties
-        new_photon = Photon(
-            position=self.position.copy(),
-            direction=self.direction.copy(),
-            wavelength=self.wavelength,
-            intensity=self.intensity * split_factor,
-            polarization=self.polarization.copy() if hasattr(self, 'polarization') else None
-        )
+        self.position = np.array(position)
+        self.direction = np.array(direction) / np.linalg.norm(np.array(direction))
+        self.intensity = intensity
         
-        # Reduce the intensity of the original photon
-        self.intensity *= (1.0 - split_factor)
+        # Generate wavelength components across visible spectrum
+        self.min_wl = 380  # violet
+        self.max_wl = 750  # red
+        self.wavelengths = np.linspace(self.min_wl, self.max_wl, num_wavelengths)
         
-        # Copy history
-        new_photon.path = [pos.copy() for pos in self.path]
-        new_photon.num_reflections = self.num_reflections
-        
-        return new_photon
+        # Create individual photons for each wavelength
+        self.spectral_components = []
+        for wl in self.wavelengths:
+            photon = Photon(
+                position=self.position.copy(),
+                direction=self.direction.copy(),
+                wavelength=wl,
+                intensity=self.intensity,
+                is_spectral_component=True
+            )
+            self.spectral_components.append(photon)
     
-    def __str__(self) -> str:
-        """String representation of the photon."""
-        return (f"Photon(λ={self.wavelength:.1f}nm, pos={self.position}, "
-                f"dir={self.direction}, intensity={self.intensity:.3f})")
+    def trace(self, medium_manager, geometry_manager, max_depth: int = 10, min_intensity: float = 0.001):
+        """
+        Trace all spectral components through the scene.
+        
+        Args:
+            medium_manager: Manager for handling media properties
+            geometry_manager: Manager for handling geometry intersections
+            max_depth: Maximum recursion depth for tracing
+            min_intensity: Minimum intensity threshold
+        """
+        # Keep track of all photons to process, including split photons
+        all_photons = self.spectral_components.copy()
+        
+        # Keep tracking photons that are generated through splitting
+        new_photons = []
+        
+        # Trace each photon up to max_depth
+        for depth in range(max_depth):
+            new_photons.clear()
+            
+            # Process each active photon
+            for photon in all_photons:
+                if not photon.is_alive() or photon.intensity < min_intensity:
+                    photon.terminate()
+                    continue
+                
+                # Find closest intersection
+                hit, distance, boundary = geometry_manager.find_intersection(
+                    photon.position, photon.direction)
+                
+                if not hit:
+                    # No intersection, photon escapes
+                    # Add a point far along the ray direction for visualization
+                    far_point = photon.position + 10.0 * photon.direction
+                    photon.path.append(far_point)
+                    photon.terminate()
+                    continue
+                
+                # Move to intersection point
+                photon.move(distance)
+                
+                # Get medium information
+                current_medium, next_medium = geometry_manager.get_medium_pair(
+                    boundary, photon.position, photon.direction)
+                
+                # Get refractive indices
+                n1 = medium_manager.get_refractive_index(current_medium, photon.wavelength)
+                n2 = medium_manager.get_refractive_index(next_medium, photon.wavelength)
+                
+                # Get normal at intersection
+                normal = boundary.get_normal(photon.position, photon.direction)
+                
+                # Handle reflection/refraction with possible splitting
+                split_photon = photon.split(normal, n1, n2)
+                
+                if split_photon is not None:
+                    new_photons.append(split_photon)
+            
+            # Add newly created photons to the processing list
+            all_photons.extend(new_photons)
+            
+            # Check if all photons are terminated
+            if all(not photon.is_alive() for photon in all_photons):
+                break
+        
+        # Return all photons including original and split ones
+        return all_photons

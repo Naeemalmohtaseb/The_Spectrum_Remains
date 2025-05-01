@@ -438,6 +438,115 @@ def test_detector():
     print("Detector test complete!")
 
 
+def improved_rainbow_test():
+    """Create a better visualization of rainbow formation with multiple rays."""
+    print("\n--- Improved Rainbow Visualization ---")
+    
+    # Create water droplet
+    droplet = Sphere(center=[0, 0, 0], radius=1.0, 
+                   name="water_droplet", inside_medium="water", outside_medium="air")
+    
+    # Set up media and geometry
+    manager = GeometryManager()
+    manager.add_boundary(droplet)
+    manager.register_medium("air", air())
+    manager.register_medium("water", water())
+    
+    # Create figure for visualization
+    plt.figure(figsize=(12, 8))
+    
+    # Draw droplet
+    circle = plt.Circle((0, 0), 1.0, color='skyblue', alpha=0.3)
+    plt.gca().add_artist(circle)
+    
+    # Define wavelengths and impact parameters
+    wavelengths = [410, 470, 520, 580, 620, 670]  # violet to red
+    impact_params = np.linspace(0.7, 0.95, 10)  # Focus on rainbow-forming region
+    
+    # Track exit angles for analysis
+    exit_angles = {wl: [] for wl in wavelengths}
+    
+    # Trace rays
+    for wavelength in wavelengths:
+        color = Photon(wavelength=wavelength).get_rgb_color()
+        
+        for impact in impact_params:
+            # Create photon
+            photon = Photon(
+                position=[-3.0, impact, 0.0],
+                direction=[1.0, 0.0, 0.0],
+                wavelength=wavelength
+            )
+            
+            # Track path
+            path = [photon.position.copy()]
+            
+            # Trace through droplet
+            reflections = 0
+            max_steps = 10
+            step = 0
+            
+            while photon.is_alive() and step < max_steps:
+                step += 1
+                
+                # Find next intersection
+                hit, distance, boundary = manager.find_intersection(photon.position, photon.direction)
+                
+                if hit:
+                    # Move to intersection
+                    photon.move(distance)
+                    path.append(photon.position.copy())
+                    
+                    # Handle boundary interaction
+                    normal = boundary.normal(photon.position, photon.direction)
+                    is_entering = boundary.is_entering(photon.position, photon.direction)
+                    
+                    # Get media
+                    if is_entering:
+                        n1 = manager.media["air"].get_refractive_index(wavelength)
+                        n2 = manager.media["water"].get_refractive_index(wavelength)
+                    else:
+                        n1 = manager.media["water"].get_refractive_index(wavelength)
+                        n2 = manager.media["air"].get_refractive_index(wavelength)
+                    
+                    # Handle refraction/reflection
+                    refracted = photon.refract(normal, n1, n2)
+                    if not refracted:
+                        reflections += 1
+                else:
+                    # No more intersections
+                    extended_point = photon.position + 3.0 * photon.direction
+                    path.append(extended_point)
+                    break
+            
+            # Plot path with appropriate color and alpha
+            path = np.array(path)
+            if reflections == 1:  # Only show primary rainbow rays
+                plt.plot(path[:, 0], path[:, 1], '-', color=color, alpha=0.5, linewidth=1)
+                
+                # Calculate exit angle
+                exit_dir = path[-1] - path[-2]
+                exit_angle = np.arctan2(exit_dir[1], exit_dir[0])
+                exit_angles[wavelength].append(exit_angle)
+    
+    # Calculate and display average exit angles
+    for wl in wavelengths:
+        if exit_angles[wl]:
+            avg_angle = np.degrees(np.mean(exit_angles[wl]))
+            print(f"λ={wl}nm: Average exit angle = {avg_angle:.2f}°")
+    
+    # Add annotations
+    plt.axis('equal')
+    plt.grid(alpha=0.3)
+    plt.xlim(-1.5, 3.0)
+    plt.ylim(-1.5, 1.5)
+    plt.title('Rainbow Formation - Water Droplet')
+    plt.xlabel('X')
+    plt.ylabel('Y')
+    
+    plt.savefig('improved_rainbow_test.png', dpi=300)
+    print("Improved visualization saved to 'improved_rainbow_test.png'")
+
 def run_all_tests():
     """Run all tests."""
     print("=== Running Rainbow Physics Tests ===")
@@ -449,6 +558,7 @@ def run_all_tests():
     test_sphere_interaction()
     test_rainbow_path()
     test_detector()
+    improved_rainbow_test()
     
     print("\n=== All tests completed! ===")
 
