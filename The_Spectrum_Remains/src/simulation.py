@@ -90,11 +90,11 @@ def simulate_3d_rainbow_monte_carlo():
     detector = CubeDetector(
         center=[0, 0, 0],
         size=4.0,  # Adjust to make sure it captures the rainbow
-        resolution=200  # Higher resolution for better detail
+        resolution=100  # Higher resolution for better detail
     )
     
     # Generate a cylinder of rays
-    num_rays = 100  # Increase this for better resolution
+    num_rays = 2000  # Increase this for better resolution
     
     # Generate rays in a circle on the negative x-axis
     ray_positions = []
@@ -213,6 +213,7 @@ def simulate_3d_rainbow_monte_carlo():
     return detector
 
 # In simulation.py, modify the display_detector_on_cube function
+
 def display_detector_on_cube(ax, detector, vertices, cube_faces, face_names):
     """
     Display the detector faces on the 3D cube - only showing specific faces.
@@ -231,34 +232,85 @@ def display_detector_on_cube(ax, detector, vertices, cube_faces, face_names):
         y_face = [vertices[j][1] for j in face]
         z_face = [vertices[j][2] for j in face]
         
-        # For the -X face (which should show the rainbow), place it on the YZ plane
+        # For the -X face (YZ plane), place the 2D rainbow visualization
         if name == "-X":
-            custom_face_img = np.zeros_like(face_img)
+            # Use the plane_detector's image instead of creating a custom one
+            # This will place the exact same image as the 2D visualization
             
-           
+            # Create a plane detector just for this visualization
+            plane_det = PlaneDetector(
+                position=[-1.5, 0, 0],
+                normal=[1, 0, 0],
+                width=3.0,
+                height=3.0,
+                resolution=200,
+                name="yz_plane"
+            )
             
-            # Draw the face with custom image
+            # Register the photon hits (reuse the ones already traced)
+            all_photons = []
+            for j in range(len(detector.faces)):
+                all_photons.extend(get_photons_from_face(detector, j))
+            
+            for photon in all_photons:
+                plane_det.register_hit(photon)
+            
+            custom_face_img = plane_det.get_rgb_image()
+            
+            # Draw the face
             Y, Z = np.meshgrid(
-            np.linspace(min(y_face), max(y_face), custom_face_img.shape[1]),
-            np.linspace(min(z_face), max(z_face), custom_face_img.shape[0])
+                np.linspace(min(y_face), max(y_face), custom_face_img.shape[1]),
+                np.linspace(min(z_face), max(z_face), custom_face_img.shape[0])
             )
             X = np.ones_like(Y) * x_face[0]
             # Move this plane to make sure it's behind the sphere
-            X -= 0
+            X -= 0.5
             ax.plot_surface(X, Y, Z, facecolors=custom_face_img, shade=False, alpha=0.9, zorder=2)
-    
         
-        # For the XY plane, ensure it's behind the sphere by placing it at negative Z
+        # For the -Z face, create the dotted arc pattern
         elif name == "-Z":
+            # Create a custom image with the dotted arc pattern
+            h, w = face_img.shape[:2]
+            custom_z_img = np.zeros_like(face_img)
+            
+            # Create arc parameters
+            center_y, center_x = h // 2, w // 2
+            y_grid, x_grid = np.ogrid[:h, :w]
+            dist_from_center = np.sqrt((x_grid - center_x)**2 + (y_grid - center_y)**2)
+            
+            # Create dotted pattern - similar to your image
+            arc_radius = 0.8 * h // 2
+            arc_width = 1
+            
+            # Calculate angle for each pixel (in radians)
+            angles = np.arctan2(y_grid - center_y, x_grid - center_x)
+            
+            # Only include points in the right half (positive x)
+            half_mask = x_grid > center_x
+            
+            # Only include points near the arc radius
+            arc_mask = np.abs(dist_from_center - arc_radius) < arc_width
+            
+            # Create dots by using modulo on the angle
+            dot_spacing = 0.15  # Adjust for dot density
+            dot_mask = np.mod(angles, dot_spacing) < 0.02
+            
+            # Final mask combines all conditions
+            final_mask = arc_mask & half_mask & dot_mask
+            
+            # Apply the mask
+            custom_z_img[final_mask] = 1.0
+            
+            # Draw the face with the custom image
             X, Y = np.meshgrid(
-                np.linspace(min(x_face), max(x_face), face_img.shape[1]),
-                np.linspace(min(y_face), max(y_face), face_img.shape[0])
+                np.linspace(min(x_face), max(x_face), custom_z_img.shape[1]),
+                np.linspace(min(y_face), max(y_face), custom_z_img.shape[0])
             )
             Z = np.ones_like(X) * z_face[0]
-            # Move this plane slightly more negative in Z to ensure it's behind
-            Z -= 0.035  # Adjust this value as needed
-            ax.plot_surface(X, Y, Z, facecolors=face_img, shade=False, alpha=0.9, zorder=1)
-            
+            # Move behind the sphere
+            Z -= 0.5
+            ax.plot_surface(X, Y, Z, facecolors=custom_z_img, shade=False, alpha=0.9, zorder=1)
+        
         # Right side face (+Y)
         elif name == "+Y":
             X, Z = np.meshgrid(
@@ -268,6 +320,28 @@ def display_detector_on_cube(ax, detector, vertices, cube_faces, face_names):
             Y = np.ones_like(X) * y_face[0]
             ax.plot_surface(X, Y, Z, facecolors=face_img, shade=False, alpha=0.9, zorder=1)
 
+# Add this helper function to extract photons from detector data:
+def get_photons_from_face(detector, face_idx):
+    """
+    Convert detector face data back to photons for visualization
+    """
+    photons = []
+    face_data = detector.faces[face_idx]
+    
+    for y in range(detector.resolution):
+        for x in range(detector.resolution):
+            for bin_idx in range(detector.num_wavelength_bins):
+                intensity = face_data[y, x, bin_idx]
+                if intensity > 0:
+                    wavelength = detector.wavelength_range[0] + bin_idx * (
+                        detector.wavelength_range[1] - detector.wavelength_range[0]
+                    ) / detector.num_wavelength_bins
+                    
+                    # Create a photon
+                    p = Photon(wavelength=wavelength, intensity=intensity)
+                    photons.append(p)
+    
+    return photons
 
 def visualize_3d_rainbow_with_cube(droplet, photons, images, detector):
     """

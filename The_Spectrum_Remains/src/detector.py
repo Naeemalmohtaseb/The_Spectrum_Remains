@@ -420,9 +420,11 @@ class PlaneDetector:
         bin_idx = int(normalized * self.num_wavelength_bins)
         return min(max(0, bin_idx), self.num_wavelength_bins - 1)
     
+    # In detector.py, replace the get_rgb_image method in PlaneDetector class with:
+
     def get_rgb_image(self):
         """
-        Convert spectral data to RGB image.
+        Convert spectral data to RGB image with a much more subtle white light ring.
         
         Returns:
             RGB image as numpy array
@@ -465,24 +467,42 @@ class PlaneDetector:
         if max_val > 0:
             gamma = 0.5  # Adjust gamma to make patterns more visible
             rgb_image = np.power(rgb_image / max_val, gamma)
-    
-        # Create a radial ring pattern
+        
+        # Add a very faint white light ring
         center_y, center_x = self.resolution // 2, self.resolution // 2
         y_grid, x_grid = np.ogrid[:self.resolution, :self.resolution]
         dist_from_center = np.sqrt((x_grid - center_x)**2 + (y_grid - center_y)**2)
         
-        # Define ring parameters
-        ring_radius = 0.6 * self.resolution // 2  # Position closer to edge
-        ring_width = 0.05 * self.resolution // 2  # Much narrower ring
-        
-        # Create a ring mask with brightness falling off from the ring
-        ring_mask = 0.3 * np.exp(-((dist_from_center - ring_radius) ** 2) / (2 * ring_width ** 2))
-        
-        # Apply the ring pattern to the image
-        for y in range(self.resolution):
-            for x in range(self.resolution):
-                # Make the ring bright white
-                brightness = ring_mask[y, x]
-                rgb_image[y, x] = [brightness, brightness, brightness]
+        # Calculate and set the radius for the white light ring
+        # Use statistical analysis to find the main rainbow radius
+        rainbow_mask = wavelength_presence > 0
+        if np.any(rainbow_mask):
+            rainbow_distances = dist_from_center[rainbow_mask]
+            
+            # Use histogram to find the most common radius (this will be the main rainbow ring)
+            hist, bin_edges = np.histogram(rainbow_distances, bins=50)
+            most_common_idx = np.argmax(hist)
+            rainbow_radius = (bin_edges[most_common_idx] + bin_edges[most_common_idx+1]) / 2
+            
+            # Ensure we're not picking up a stray ray
+            if len(rainbow_distances) > 100:  # Enough points to be sure it's the main rainbow
+                # Position ring inside the rainbow
+                ring_radius = rainbow_radius * 0.85  # Further inside to avoid overlap
+                
+                # Very narrow width with quick drop-off
+                ring_width = 0.03 * self.resolution
+                
+                # Create extremely faint white ring (much more subtle than before)
+                ring_mask = 0.1 * np.exp(-((dist_from_center - ring_radius) ** 2) / (2 * ring_width ** 2))
+                
+                # Apply the ring
+                for y in range(self.resolution):
+                    for x in range(self.resolution):
+                        brightness = ring_mask[y, x]
+                        if brightness > 0.001:  # Only apply where it's visible
+                            # Blend with existing colors - don't completely overwrite
+                            rgb_image[y, x, 0] = max(rgb_image[y, x, 0], brightness)
+                            rgb_image[y, x, 1] = max(rgb_image[y, x, 1], brightness)
+                            rgb_image[y, x, 2] = max(rgb_image[y, x, 2], brightness)
         
         return rgb_image
