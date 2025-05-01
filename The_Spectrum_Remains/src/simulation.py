@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.colors import LinearSegmentedColormap
+import matplotlib.image as mpimg  
 
 # Import your custom modules
 from photon import Photon, WhiteLight
@@ -213,112 +214,67 @@ def simulate_3d_rainbow_monte_carlo():
     return detector
 
 # In simulation.py, modify the display_detector_on_cube function
-
+FACE_TEXTURES = {
+    "-X": "-X.jpg",               # white-ring rainbow
+    "+Y": "+Y.jpg",                  # raw plot you liked
+    "-Z": "-Z.jpg",                  # raw plot you liked
+    # add more if you wish, or leave others to default
+}
 def display_detector_on_cube(ax, detector, vertices, cube_faces, face_names):
     """
-    Display the detector faces on the 3D cube - only showing specific faces.
+    Paste pre-rendered 2-D PNGs onto the cube in the 3-D scene.
+    Anything listed in FACE_TEXTURES is shown; other faces keep detector data.
     """
-    # For each face, check if we want to display it
     for i, (face, name) in enumerate(zip(cube_faces, face_names)):
-        # Get the RGB image for this face
-        face_img = detector.get_rgb_image(i)
-        
-        # Skip if no image
-        if face_img is None:
-            continue
-        
-        # Get the 4 corners of this face
+
+        # ------------------------------------------------------------------ #
+        # 1.  Decide which image we will draw on this face
+        # ------------------------------------------------------------------ #
+        if name in FACE_TEXTURES:
+            img = mpimg.imread(FACE_TEXTURES[name])          # ← PNG from disk
+        else:
+            img = detector.get_rgb_image(i)                  # ← simulated data
+            if img is None:
+                continue                                     # nothing to draw
+
+        # ------------------------------------------------------------------ #
+        # 2.  Build the mesh for the current face
+        # ------------------------------------------------------------------ #
         x_face = [vertices[j][0] for j in face]
         y_face = [vertices[j][1] for j in face]
         z_face = [vertices[j][2] for j in face]
-        
-        # For the -X face (YZ plane), place the 2D rainbow visualization
-        if name == "-X":
-            # Use the plane_detector's image instead of creating a custom one
-            # This will place the exact same image as the 2D visualization
-            
-            # Create a plane detector just for this visualization
-            plane_det = PlaneDetector(
-                position=[-1.5, 0, 0],
-                normal=[1, 0, 0],
-                width=3.0,
-                height=3.0,
-                resolution=200,
-                name="yz_plane"
-            )
-            
-            # Register the photon hits (reuse the ones already traced)
-            all_photons = []
-            for j in range(len(detector.faces)):
-                all_photons.extend(get_photons_from_face(detector, j))
-            
-            for photon in all_photons:
-                plane_det.register_hit(photon)
-            
-            custom_face_img = plane_det.get_rgb_image()
-            
-            # Draw the face
+
+        if name in ["+X", "-X"]:
+            # constant X – build Y-Z grid
             Y, Z = np.meshgrid(
-                np.linspace(min(y_face), max(y_face), custom_face_img.shape[1]),
-                np.linspace(min(z_face), max(z_face), custom_face_img.shape[0])
+                np.linspace(min(y_face), max(y_face), img.shape[1]),
+                np.linspace(min(z_face), max(z_face), img.shape[0])
             )
             X = np.ones_like(Y) * x_face[0]
-            # Move this plane to make sure it's behind the sphere
-            X -= 0.5
-            ax.plot_surface(X, Y, Z, facecolors=custom_face_img, shade=False, alpha=0.9, zorder=2)
-        
-        # For the -Z face, create the dotted arc pattern
-        elif name == "-Z":
-            # Create a custom image with the dotted arc pattern
-            h, w = face_img.shape[:2]
-            custom_z_img = np.zeros_like(face_img)
-            
-            # Create arc parameters
-            center_y, center_x = h // 2, w // 2
-            y_grid, x_grid = np.ogrid[:h, :w]
-            dist_from_center = np.sqrt((x_grid - center_x)**2 + (y_grid - center_y)**2)
-            
-            # Create dotted pattern - similar to your image
-            arc_radius = 0.8 * h // 2
-            arc_width = 1
-            
-            # Calculate angle for each pixel (in radians)
-            angles = np.arctan2(y_grid - center_y, x_grid - center_x)
-            
-            # Only include points in the right half (positive x)
-            half_mask = x_grid > center_x
-            
-            # Only include points near the arc radius
-            arc_mask = np.abs(dist_from_center - arc_radius) < arc_width
-            
-            # Create dots by using modulo on the angle
-            dot_spacing = 0.15  # Adjust for dot density
-            dot_mask = np.mod(angles, dot_spacing) < 0.02
-            
-            # Final mask combines all conditions
-            final_mask = arc_mask & half_mask & dot_mask
-            
-            # Apply the mask
-            custom_z_img[final_mask] = 1.0
-            
-            # Draw the face with the custom image
-            X, Y = np.meshgrid(
-                np.linspace(min(x_face), max(x_face), custom_z_img.shape[1]),
-                np.linspace(min(y_face), max(y_face), custom_z_img.shape[0])
-            )
-            Z = np.ones_like(X) * z_face[0]
-            # Move behind the sphere
-            Z -= 0.5
-            ax.plot_surface(X, Y, Z, facecolors=custom_z_img, shade=False, alpha=0.9, zorder=1)
-        
-        # Right side face (+Y)
-        elif name == "+Y":
+
+        elif name in ["+Y", "-Y"]:
+            # constant Y – build X-Z grid
             X, Z = np.meshgrid(
-                np.linspace(min(x_face), max(x_face), face_img.shape[1]),
-                np.linspace(min(z_face), max(z_face), face_img.shape[0])
+                np.linspace(min(x_face), max(x_face), img.shape[1]),
+                np.linspace(min(z_face), max(z_face), img.shape[0])
             )
             Y = np.ones_like(X) * y_face[0]
-            ax.plot_surface(X, Y, Z, facecolors=face_img, shade=False, alpha=0.9, zorder=1)
+
+        else:  # "+Z" or "-Z"
+            # constant Z – build X-Y grid
+            X, Y = np.meshgrid(
+                np.linspace(min(x_face), max(x_face), img.shape[1]),
+                np.linspace(min(y_face), max(y_face), img.shape[0])
+            )
+            Z = np.ones_like(X) * z_face[0]
+
+        # ------------------------------------------------------------------ #
+        # 3.  Actually draw the face – img is already RGB or RGBA
+        # ------------------------------------------------------------------ #
+        ax.plot_surface(
+            X, Y, Z, rstride=1, cstride=1,
+            facecolors=img, shade=False, antialiased=False
+        )
 
 # Add this helper function to extract photons from detector data:
 def get_photons_from_face(detector, face_idx):
