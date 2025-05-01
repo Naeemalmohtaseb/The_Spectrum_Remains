@@ -7,9 +7,66 @@ from matplotlib.colors import LinearSegmentedColormap
 from photon import Photon, WhiteLight
 from medium import Medium, MediumManager
 from geometry import Boundary, Sphere, GeometryManager
-from detector import CubeDetector
+from detector import CubeDetector, PlaneDetector
 
-
+# Add this function to your simulation.py file to help debug the detector content
+def debug_detector(detector, output_dir="."):
+    """
+    Debug the detector by saving separate images of each face.
+    
+    Args:
+        detector: The cube detector
+        output_dir: Directory to save debug images
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    
+    # Check each face of the detector
+    for i, name in enumerate(detector.face_names):
+        # Get the RGB image for this face
+        face_img = detector.get_rgb_image(i)
+        
+        # Skip if no image
+        if face_img is None:
+            print(f"No image for face {name}")
+            continue
+        
+        # Check if the face has any non-zero data
+        face_data = detector.faces[i]
+        total_intensity = np.sum(face_data)
+        
+        # Create a figure to display the face
+        plt.figure(figsize=(10, 8))
+        plt.imshow(face_img)
+        plt.title(f"Face {name} - Total Intensity: {total_intensity:.6f}")
+        plt.colorbar(label="Color Value")
+        
+        # Save the figure
+        plt.savefig(f"{output_dir}/debug_face_{name.replace('+', 'pos').replace('-', 'neg')}.png", dpi=300)
+        
+        # Print debug info
+        max_val = np.max(face_data)
+        non_zero = np.count_nonzero(face_data)
+        print(f"Face {name}: Max value = {max_val:.6f}, Non-zero elements = {non_zero}")
+        
+        # Additional wavelength distribution debug
+        if total_intensity > 0:
+            # Check wavelength distribution
+            wavelength_sums = np.sum(face_data, axis=(0, 1))
+            plt.figure(figsize=(10, 6))
+            wavelengths = np.linspace(
+                detector.wavelength_range[0], 
+                detector.wavelength_range[1], 
+                detector.num_wavelength_bins
+            )
+            plt.plot(wavelengths, wavelength_sums)
+            plt.title(f"Wavelength Distribution for Face {name}")
+            plt.xlabel("Wavelength (nm)")
+            plt.ylabel("Total Intensity")
+            plt.grid(True)
+            plt.savefig(f"{output_dir}/debug_wavelength_{name.replace('+', 'pos').replace('-', 'neg')}.png", dpi=300)
+    
+    plt.close('all')
 def simulate_3d_rainbow_monte_carlo():
     """Simulate 3D rainbow formation with Monte Carlo ray tracing."""
     
@@ -32,12 +89,12 @@ def simulate_3d_rainbow_monte_carlo():
     # Create cube detector
     detector = CubeDetector(
         center=[0, 0, 0],
-        size=5.0,
-        resolution=100
+        size=4.0,  # Adjust to make sure it captures the rainbow
+        resolution=200  # Higher resolution for better detail
     )
     
     # Generate a cylinder of rays
-    num_rays = 400  # Increase this for better resolution
+    num_rays = 100  # Increase this for better resolution
     
     # Generate rays in a circle on the negative x-axis
     ray_positions = []
@@ -96,14 +153,125 @@ def simulate_3d_rainbow_monte_carlo():
             images[name] = rgb_image
     
     # Visualize the 3D scene with rainbow
-    visualize_3d_rainbow_with_cube(droplet, visualization_photons, images)
+    visualize_3d_rainbow_with_cube(droplet, visualization_photons, images, detector)
     
-    # Create zoomed out view
-    visualize_rainbow_zoomed_out(droplet, visualization_photons, images)
+    if "-X" in images:
+        plt.figure(figsize=(10, 10))
+        plt.imshow(images["-X"])
+        plt.title('Rainbow on -X Face (High Resolution)')
+        plt.colorbar(label='Intensity')
+        plt.savefig('rainbow_face_detail.png', dpi=300)
+        plt.show()
     
+    # Add at the end of your simulate_3d_rainbow_monte_carlo function:
+    # Create a specific plane detector for high-resolution rainbow visualization
+    plane_detector = PlaneDetector(
+        position=[-1.5, 0, 0],  # Position on -X face
+        normal=[1, 0, 0],       # Normal pointing along +X
+        width=3.0,
+        height=3.0,
+        resolution=300,
+        name="rainbow_detector"
+    )
+
+    # Register hits on the plane detector
+    for photon in all_photons:
+        plane_detector.register_hit(photon)
+
+    # Show the high-resolution rainbow
+    plt.figure(figsize=(10, 10))
+    rainbow_img = plane_detector.get_rgb_image()
+    plt.imshow(rainbow_img)
+    plt.title('Rainbow on -X Face (High Resolution)')
+    plt.axis('equal')
+    plt.savefig('rainbow_high_res.png', dpi=300)
+    plt.show()
+
+    debug_detector(detector)
+
+    # Create a dedicated plane detector for 2D visualization
+    plane_detector = PlaneDetector(
+        position=[-1.5, 0, 0],  # Position on -X face
+        normal=[1, 0, 0],       # Normal pointing along +X
+        width=3.0,
+        height=3.0,
+        resolution=300,
+        name="rainbow_plane"
+    )
+
+    # Register hits on the plane detector
+    for photon in all_photons:
+        plane_detector.register_hit(photon)
+
+    # Show the detailed 2D rainbow
+    plt.figure(figsize=(10, 10))
+    rainbow_img = plane_detector.get_rgb_image()
+    plt.imshow(rainbow_img)
+    plt.title('Rainbow on -X Face (High Resolution)')
+    plt.colorbar(label='Intensity')
+    plt.savefig('rainbow_plane_detail.png', dpi=300)
+    plt.show()
+
+
     return detector
 
-def visualize_3d_rainbow_with_cube(droplet, photons, images):
+def display_detector_on_cube(ax, detector, vertices, cube_faces, face_names):
+    """
+    Display the detector faces on the 3D cube - only showing specific faces.
+    
+    Args:
+        ax: Matplotlib 3D axis
+        detector: Cube detector
+        vertices: Cube vertices
+        cube_faces: Cube face indices
+        face_names: Face names
+    """
+    # We specifically want to highlight the -X face for the rainbow
+    # This is the YZ plane at negative X
+    
+    # For each face, check if we want to display it
+    for i, (face, name) in enumerate(zip(cube_faces, face_names)):
+        # Get the RGB image for this face
+        face_img = detector.get_rgb_image(i)
+        
+        # Skip if no image
+        if face_img is None:
+            continue
+        
+        # Get the 4 corners of this face
+        x = [vertices[j][0] for j in face]
+        y = [vertices[j][1] for j in face]
+        z = [vertices[j][2] for j in face]
+        
+        # For the -X face (which should show the rainbow), place it on the YZ plane
+        if name == "-X":
+            # This is the face we want to show the rainbow on
+            Y, Z = np.meshgrid(
+                np.linspace(min(y), max(y), face_img.shape[1]),
+                np.linspace(min(z), max(z), face_img.shape[0])
+            )
+            X = np.ones_like(Y) * x[0]
+            ax.plot_surface(X, Y, Z, facecolors=face_img, shade=False, alpha=0.9, zorder=2)
+        
+        # Draw the bottom face (-Z) to provide context
+        elif name == "-Z":
+            X, Y = np.meshgrid(
+                np.linspace(min(x), max(x), face_img.shape[1]),
+                np.linspace(min(y), max(y), face_img.shape[0])
+            )
+            Z = np.ones_like(X) * z[0]
+            ax.plot_surface(X, Y, Z, facecolors=face_img, shade=False, alpha=0.9, zorder=1)
+        
+        # Right side face (+Y)
+        elif name == "+Y":
+            X, Z = np.meshgrid(
+                np.linspace(min(x), max(x), face_img.shape[1]),
+                np.linspace(min(z), max(z), face_img.shape[0])
+            )
+            Y = np.ones_like(X) * y[0]
+            ax.plot_surface(X, Y, Z, facecolors=face_img, shade=False, alpha=0.9, zorder=1)
+
+def visualize_3d_rainbow_with_cube(droplet, photons, images, detector):
     """
     Create a 3D visualization showing the droplet, light paths, and cube detector.
     
@@ -126,17 +294,25 @@ def visualize_3d_rainbow_with_cube(droplet, photons, images):
     x = droplet.radius * np.cos(u) * np.sin(v)
     y = droplet.radius * np.sin(u) * np.sin(v)
     z = droplet.radius * np.cos(v)
-    ax.plot_surface(x, y, z, color='skyblue', alpha=0.2, edgecolor='lightblue', linewidth=0.2)
+    ax.plot_surface(x, y, z, color='skyblue', alpha=0.2, edgecolor='lightblue', linewidth=0.2, zorder=5)
     
     # Draw coordinate axes with labels
-    ax.quiver(0, 0, 0, 1.5, 0, 0, color='r', arrow_length_ratio=0.1, label='X')
-    ax.quiver(0, 0, 0, 0, 1.5, 0, color='r', arrow_length_ratio=0.1, label='Y') 
-    ax.quiver(0, 0, 0, 0, 0, 1.5, color='r', arrow_length_ratio=0.1, label='Z')
+    ax.quiver(0, 0, 0, 1.5, 0, 0, color='r', arrow_length_ratio=0.1)
+    ax.quiver(0, 0, 0, 0, 1.5, 0, color='r', arrow_length_ratio=0.1) 
+    ax.quiver(0, 0, 0, 0, 0, 1.5, color='r', arrow_length_ratio=0.1)
     
-    # Add "X", "Y", "Z" labels at the end of each axis
-    ax.text(1.7, 0, 0, "X", color='red', fontsize=12)
-    ax.text(0, 1.7, 0, "Y", color='red', fontsize=12)
-    ax.text(0, 0, 1.7, "Z", color='red', fontsize=12)
+    # Add clear labels at the end of each axis
+    ax.text(1.7, 0, 0, "+X", color='red', fontsize=12)
+    ax.text(0, 1.7, 0, "+Y", color='red', fontsize=12)
+    ax.text(0, 0, 1.7, "+Z", color='red', fontsize=12)
+    ax.text(-1.7, 0, 0, "-X", color='red', fontsize=12)
+    ax.text(0, -1.7, 0, "-Y", color='red', fontsize=12)
+    ax.text(0, 0, -1.7, "-Z", color='red', fontsize=12)
+    
+    # Set axis labels
+    ax.set_xlabel('X Axis')
+    ax.set_ylabel('Y Axis')
+    ax.set_zlabel('Z Axis')
     
     # Create and draw cube (using wireframe)
     cube_size = 3.0
@@ -177,25 +353,8 @@ def visualize_3d_rainbow_with_cube(droplet, photons, images):
     
     face_names = ["-Z", "+Z", "-Y", "+Y", "-X", "+X"]
     
-    # Draw each face with semi-transparency
-    for i, face in enumerate(cube_faces):
-        # Get the 4 corners of this face
-        x = [vertices[j][0] for j in face]
-        y = [vertices[j][1] for j in face]
-        z = [vertices[j][2] for j in face]
-        
-        # Draw face with light gray color (for spots without light)
-        ax.plot_surface(
-            np.array([[x[0], x[1]], [x[3], x[2]]]),
-            np.array([[y[0], y[1]], [y[3], y[2]]]),
-            np.array([[z[0], z[1]], [z[3], z[2]]]),
-            color='lightgray', alpha=0.3
-        )
-        
-        # Add face label
-        face_center = np.mean(vertices[face], axis=0)
-        ax.text(face_center[0]*1.1, face_center[1]*1.1, face_center[2]*1.1, 
-               face_names[i], color='black', fontsize=10)
+    # Display detector faces on cube
+    display_detector_on_cube(ax, detector, vertices, cube_faces, face_names)
     
     # Define only the top incoming ray to visualize
     top_position = [-3, 0, 0.8]  # top center ray
@@ -222,7 +381,7 @@ def visualize_3d_rainbow_with_cube(droplet, photons, images):
                 continue  # skip short paths
             path = np.array(photon.path)
             xs, ys, zs = path[:, 0], path[:, 1], path[:, 2]
-            ax.plot(xs, ys, zs, color=color, linewidth=1.5, alpha=0.7)
+            ax.plot(xs, ys, zs, color=color, linewidth=1.5, alpha=0.7, zorder=10)
     
     # Create legend handles
     legend_handles = []
@@ -246,7 +405,7 @@ def visualize_3d_rainbow_with_cube(droplet, photons, images):
             xs, ys, zs = path[:, 0], path[:, 1], path[:, 2]
             
             # Plot path with appropriate color
-            ax.plot(xs, ys, zs, color=color, linewidth=1.5, alpha=0.7)
+            ax.plot(xs, ys, zs, color=color, linewidth=1.5, alpha=0.7, zorder=10)
         
         # Add to legend
         legend_handles.append(mpatches.Patch(color=color, label=label))
@@ -256,6 +415,9 @@ def visualize_3d_rainbow_with_cube(droplet, photons, images):
     
     # Add legend
     ax.legend(handles=legend_handles, loc='upper right')
+    
+    # Set a view angle that clearly shows the rainbow on the -X face and the light paths
+    ax.view_init(elev=15, azim=-60)
     
     # Set equal aspect ratio and limits
     ax.set_box_aspect([1, 1, 1])  # Equal aspect ratio

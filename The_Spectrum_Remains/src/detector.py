@@ -217,8 +217,12 @@ class CubeDetector:
         if face_idx < 0 or face_idx >= len(self.faces):
             return None
         
-        # Create RGB image
+        # Create RGB image with black background
         rgb_image = np.zeros((self.resolution, self.resolution, 3))
+        
+        # Track where light hits for white light detection
+        wavelength_presence = np.zeros((self.resolution, self.resolution))
+        total_intensity = np.zeros((self.resolution, self.resolution))
         
         # For each wavelength bin, add its RGB contribution
         for bin_idx in range(self.num_wavelength_bins):
@@ -230,18 +234,45 @@ class CubeDetector:
             # Convert wavelength to RGB
             r, g, b = wavelength_to_rgb(wavelength)
             
-            # Add contribution to each pixel
-            for y in range(self.resolution):
-                for x in range(self.resolution):
-                    intensity = self.faces[face_idx][y, x, bin_idx]
-                    rgb_image[y, x, 0] += r * intensity
-                    rgb_image[y, x, 1] += g * intensity
-                    rgb_image[y, x, 2] += b * intensity
+            # Create a mask for pixels with this wavelength
+            face_data = self.faces[face_idx][:,:,bin_idx]
+            max_intensity = np.max(face_data)
+            
+            if max_intensity > 0:
+                # Count which pixels have this wavelength
+                threshold = 0.001 * max_intensity 
+                has_wavelength = (face_data > threshold)
+                wavelength_presence += has_wavelength
+                
+                # Track total intensity
+                total_intensity += face_data
+                
+                # Add contribution to each pixel
+                for y in range(self.resolution):
+                    for x in range(self.resolution):
+                        intensity = face_data[y, x]
+                        if intensity > 0:
+                            rgb_image[y, x, 0] += r * intensity
+                            rgb_image[y, x, 1] += g * intensity
+                            rgb_image[y, x, 2] += b * intensity
         
-        # Normalize if needed
+        # Normalize to make colors more visible
         max_val = np.max(rgb_image)
         if max_val > 0:
-            rgb_image = rgb_image / max_val
+            # Apply a gamma correction to make dimmer pixels more visible
+            gamma = 0.5
+            rgb_image = np.power(rgb_image / max_val, gamma)
+        
+        # Identify white light areas (where many wavelengths are present)
+        white_light_threshold = 0.7  # If >70% of wavelengths present, treat as white
+        normalized_presence = wavelength_presence / self.num_wavelength_bins
+        white_mask = normalized_presence > white_light_threshold
+        
+        # Make white light areas white
+        for y in range(self.resolution):
+            for x in range(self.resolution):
+                if white_mask[y, x]:
+                    rgb_image[y, x] = [1.0, 1.0, 1.0]
         
         return rgb_image
 
@@ -396,7 +427,7 @@ class PlaneDetector:
         Returns:
             RGB image as numpy array
         """
-        # Create RGB image
+        # Create RGB image with black background
         rgb_image = np.zeros((self.resolution, self.resolution, 3))
         
         # For showing wavelength coverage (white vs colored light)
@@ -413,22 +444,27 @@ class PlaneDetector:
             r, g, b = wavelength_to_rgb(wavelength)
             
             # Count which pixels have significant energy in this wavelength
-            threshold = 0.01 * np.max(self.spectral_grid[:,:,bin_idx])
-            has_wavelength = (self.spectral_grid[:,:,bin_idx] > threshold)
-            wavelength_presence += has_wavelength
-            
-            # Add contribution to each pixel
-            for y in range(self.resolution):
-                for x in range(self.resolution):
-                    intensity = self.spectral_grid[y, x, bin_idx]
-                    rgb_image[y, x, 0] += r * intensity
-                    rgb_image[y, x, 1] += g * intensity
-                    rgb_image[y, x, 2] += b * intensity
+            data = self.spectral_grid[:,:,bin_idx]
+            max_val = np.max(data)
+            if max_val > 0:
+                threshold = 0.01 * max_val
+                has_wavelength = (data > threshold)
+                wavelength_presence += has_wavelength
+                
+                # Add contribution to each pixel
+                for y in range(self.resolution):
+                    for x in range(self.resolution):
+                        intensity = data[y, x]
+                        if intensity > 0:
+                            rgb_image[y, x, 0] += r * intensity
+                            rgb_image[y, x, 1] += g * intensity
+                            rgb_image[y, x, 2] += b * intensity
         
-        # Normalize the image
+        # Apply gamma correction to make colors more visible
         max_val = np.max(rgb_image)
         if max_val > 0:
-            rgb_image = rgb_image / max_val
+            gamma = 0.5  # Adjust gamma to make patterns more visible
+            rgb_image = np.power(rgb_image / max_val, gamma)
         
         # Convert pixels with most wavelengths to white
         normalized_presence = wavelength_presence / self.num_wavelength_bins
@@ -440,9 +476,5 @@ class PlaneDetector:
                 if white_mask[y, x]:
                     # Make it white
                     rgb_image[y, x] = [1.0, 1.0, 1.0]
-        
-        # Create background mask for light gray
-        gray_mask = self.total_intensity == 0
-        rgb_image[gray_mask] = [0.8, 0.8, 0.8]  # Light gray for no light
         
         return rgb_image

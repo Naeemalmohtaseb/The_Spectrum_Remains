@@ -310,7 +310,7 @@ class WhiteLight:
     def __init__(self, 
                  position: Union[List[float], np.ndarray],
                  direction: Union[List[float], np.ndarray],
-                 num_wavelengths: int = 30,
+                 num_wavelengths: int = 64,
                  intensity: float = 1.0):
         """
         Initialize a white light ray with spectral components.
