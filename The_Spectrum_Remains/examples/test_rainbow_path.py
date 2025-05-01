@@ -19,9 +19,9 @@ import matplotlib.pyplot as plt
 from typing import List, Tuple
 
 # Import our modules
-from src.photon import Photon
-from src.medium import Medium, water, air
-from src.geometry import Sphere, Plane, Detector, GeometryManager
+from photon import Photon
+from medium import Medium, water, air
+from geometry import Sphere, Plane, Detector, GeometryManager
 
 
 def test_photon_creation():

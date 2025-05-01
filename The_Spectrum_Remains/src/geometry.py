@@ -551,7 +551,7 @@ class Detector:
         Returns:
             RGB image as numpy array (resolution_x, resolution_y, 3)
         """
-        from .photon import Photon  # Import here to avoid circular import
+        from photon import Photon  # Import here to avoid circular import
         
         # Create RGB image
         rgb_image = np.zeros((self.resolution[0], self.resolution[1], 3))
