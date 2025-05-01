@@ -91,11 +91,11 @@ def simulate_3d_rainbow_monte_carlo():
     detector = CubeDetector(
         center=[0, 0, 0],
         size=4.0,  # Adjust to make sure it captures the rainbow
-        resolution=100  # Higher resolution for better detail
+        resolution=20  # Higher resolution for better detail
     )
     
     # Generate a cylinder of rays
-    num_rays = 2000  # Increase this for better resolution
+    num_rays = 100  # Increase this for better resolution
     
     # Generate rays in a circle on the negative x-axis
     ray_positions = []
@@ -214,38 +214,41 @@ def simulate_3d_rainbow_monte_carlo():
     return detector
 
 # In simulation.py, modify the display_detector_on_cube function
+import matplotlib.image as mpimg  # Ensure this is imported at the top
+
 FACE_TEXTURES = {
-    "-X": "-X.jpg",               # white-ring rainbow
-    "+Y": "+Y.jpg",                  # raw plot you liked
-    "-Z": "-Z.jpg",                  # raw plot you liked
-    # add more if you wish, or leave others to default
+    "-X": "/workspaces/The_Spectrum_Remains/The_Spectrum_Remains/src/-X.jpg",  # white-ring rainbow
+    "+Y": "/workspaces/The_Spectrum_Remains/The_Spectrum_Remains/src/+Y.jpg",  # raw plot
+    "-Z": "/workspaces/The_Spectrum_Remains/The_Spectrum_Remains/src/-Z.jpg",  # raw plot
 }
+
 def display_detector_on_cube(ax, detector, vertices, cube_faces, face_names):
     """
-    Paste pre-rendered 2-D PNGs onto the cube in the 3-D scene.
+    Paste pre-rendered 2-D PNGs or JPGs onto the cube in the 3-D scene.
     Anything listed in FACE_TEXTURES is shown; other faces keep detector data.
     """
     for i, (face, name) in enumerate(zip(cube_faces, face_names)):
 
-        # ------------------------------------------------------------------ #
-        # 1.  Decide which image we will draw on this face
-        # ------------------------------------------------------------------ #
+        # 1. Decide which image to draw on this face
         if name in FACE_TEXTURES:
-            img = mpimg.imread(FACE_TEXTURES[name])          # ← PNG from disk
+            img = mpimg.imread(FACE_TEXTURES[name])
         else:
-            img = detector.get_rgb_image(i)                  # ← simulated data
+            img = detector.get_rgb_image(i)
             if img is None:
-                continue                                     # nothing to draw
+                continue
 
-        # ------------------------------------------------------------------ #
-        # 2.  Build the mesh for the current face
-        # ------------------------------------------------------------------ #
+        # --- Normalize to float in [0, 1], drop alpha if needed ---
+        if img.dtype != np.float32 and img.dtype != np.float64:
+            img = img.astype(np.float32) / 255.0
+        if img.shape[2] == 4:
+            img = img[:, :, :3]
+
+        # 2. Build the mesh for this face
         x_face = [vertices[j][0] for j in face]
         y_face = [vertices[j][1] for j in face]
         z_face = [vertices[j][2] for j in face]
 
         if name in ["+X", "-X"]:
-            # constant X – build Y-Z grid
             Y, Z = np.meshgrid(
                 np.linspace(min(y_face), max(y_face), img.shape[1]),
                 np.linspace(min(z_face), max(z_face), img.shape[0])
@@ -253,7 +256,6 @@ def display_detector_on_cube(ax, detector, vertices, cube_faces, face_names):
             X = np.ones_like(Y) * x_face[0]
 
         elif name in ["+Y", "-Y"]:
-            # constant Y – build X-Z grid
             X, Z = np.meshgrid(
                 np.linspace(min(x_face), max(x_face), img.shape[1]),
                 np.linspace(min(z_face), max(z_face), img.shape[0])
@@ -261,16 +263,13 @@ def display_detector_on_cube(ax, detector, vertices, cube_faces, face_names):
             Y = np.ones_like(X) * y_face[0]
 
         else:  # "+Z" or "-Z"
-            # constant Z – build X-Y grid
             X, Y = np.meshgrid(
                 np.linspace(min(x_face), max(x_face), img.shape[1]),
                 np.linspace(min(y_face), max(y_face), img.shape[0])
             )
             Z = np.ones_like(X) * z_face[0]
 
-        # ------------------------------------------------------------------ #
-        # 3.  Actually draw the face – img is already RGB or RGBA
-        # ------------------------------------------------------------------ #
+        # 3. Plot the face
         ax.plot_surface(
             X, Y, Z, rstride=1, cstride=1,
             facecolors=img, shade=False, antialiased=False
