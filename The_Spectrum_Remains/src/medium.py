@@ -1,3 +1,6 @@
+import numpy as np
+from typing import Tuple, List, Dict, Any, Optional, Callable
+
 class Medium:
     """
     Represents a medium with wavelength-dependent optical properties in 3D.
@@ -80,8 +83,9 @@ class MediumManager:
             
             # Cauchy's formula coefficients for water
             A = 1.324
-            B = 0.00325
-            C = 0.00031
+            B = 0.0065   # double
+            C = 0.00062  # double
+
             
             # Calculate refractive index
             n = A + B / (wl_um**2) + C / (wl_um**4)

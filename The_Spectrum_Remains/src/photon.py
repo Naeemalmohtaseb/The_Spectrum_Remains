@@ -11,14 +11,14 @@ class Photon:
     - Intensity tracking for reflections/refractions
     - Path history for visualization
     """
-    
+        
     def __init__(self, 
-                 position: Union[List[float], np.ndarray] = None, 
-                 direction: Union[List[float], np.ndarray] = None, 
-                 wavelength: float = 550.0,
-                 intensity: float = 1.0,
-                 polarization: Union[List[float], np.ndarray] = None,
-                 is_spectral_component: bool = False):
+                position: Union[List[float], np.ndarray] = None, 
+                direction: Union[List[float], np.ndarray] = None, 
+                wavelength: float = 550.0,
+                intensity: float = 1.0,
+                polarization: Union[List[float], np.ndarray] = None,
+                is_spectral_component: bool = False):
         """
         Initialize a photon with position, direction, wavelength and other properties.
         
@@ -30,6 +30,7 @@ class Photon:
             polarization: Polarization vector (optional)
             is_spectral_component: If True, photon is part of a white light ray
         """
+        self.for_visualization = False  # <--- correctly indented
         # Initialize position
         if position is None:
             self.position = np.array([0.0, 0.0, 0.0])

@@ -1,3 +1,6 @@
+import numpy as np
+from typing import List, Tuple, Optional, Union, Dict, Any
+
 class Boundary:
     """Base class for geometric boundaries in 3D space."""
     
