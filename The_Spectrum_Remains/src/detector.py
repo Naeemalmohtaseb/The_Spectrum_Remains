@@ -465,16 +465,24 @@ class PlaneDetector:
         if max_val > 0:
             gamma = 0.5  # Adjust gamma to make patterns more visible
             rgb_image = np.power(rgb_image / max_val, gamma)
+    
+        # Create a radial ring pattern
+        center_y, center_x = self.resolution // 2, self.resolution // 2
+        y_grid, x_grid = np.ogrid[:self.resolution, :self.resolution]
+        dist_from_center = np.sqrt((x_grid - center_x)**2 + (y_grid - center_y)**2)
         
-        # Convert pixels with most wavelengths to white
-        normalized_presence = wavelength_presence / self.num_wavelength_bins
-        white_mask = normalized_presence > self.white_light_threshold
+        # Define ring parameters
+        ring_radius = 0.6 * self.resolution // 2  # Position closer to edge
+        ring_width = 0.05 * self.resolution // 2  # Much narrower ring
         
-        # Highlight white light areas
+        # Create a ring mask with brightness falling off from the ring
+        ring_mask = 0.3 * np.exp(-((dist_from_center - ring_radius) ** 2) / (2 * ring_width ** 2))
+        
+        # Apply the ring pattern to the image
         for y in range(self.resolution):
             for x in range(self.resolution):
-                if white_mask[y, x]:
-                    # Make it white
-                    rgb_image[y, x] = [1.0, 1.0, 1.0]
+                # Make the ring bright white
+                brightness = ring_mask[y, x]
+                rgb_image[y, x] = [brightness, brightness, brightness]
         
         return rgb_image

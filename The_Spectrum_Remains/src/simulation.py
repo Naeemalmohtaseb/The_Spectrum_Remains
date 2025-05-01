@@ -158,8 +158,9 @@ def simulate_3d_rainbow_monte_carlo():
     if "-X" in images:
         plt.figure(figsize=(10, 10))
         plt.imshow(images["-X"])
+        white_black_cmap = LinearSegmentedColormap.from_list('wb', [(1,1,1), (0,0,0)])
+        plt.colorbar(label='Intensity', cmap=white_black_cmap)
         plt.title('Rainbow on -X Face (High Resolution)')
-        plt.colorbar(label='Intensity')
         plt.savefig('rainbow_face_detail.png', dpi=300)
         plt.show()
     
@@ -182,10 +183,15 @@ def simulate_3d_rainbow_monte_carlo():
     plt.figure(figsize=(10, 10))
     rainbow_img = plane_detector.get_rgb_image()
     plt.imshow(rainbow_img)
+    white_black_cmap = LinearSegmentedColormap.from_list('wb', [(1,1,1), (0,0,0)])
+    plt.colorbar(label='Intensity', cmap=white_black_cmap)
     plt.title('Rainbow on -X Face (High Resolution)')
     plt.axis('equal')
     plt.savefig('rainbow_high_res.png', dpi=300)
     plt.show()
+
+
+    plt.savefig('rainbow_plane_detail.png', dpi=300)
 
     debug_detector(detector)
 
@@ -203,32 +209,14 @@ def simulate_3d_rainbow_monte_carlo():
     for photon in all_photons:
         plane_detector.register_hit(photon)
 
-    # Show the detailed 2D rainbow
-    plt.figure(figsize=(10, 10))
-    rainbow_img = plane_detector.get_rgb_image()
-    plt.imshow(rainbow_img)
-    plt.title('Rainbow on -X Face (High Resolution)')
-    plt.colorbar(label='Intensity')
-    plt.savefig('rainbow_plane_detail.png', dpi=300)
-    plt.show()
-
 
     return detector
 
+# In simulation.py, modify the display_detector_on_cube function
 def display_detector_on_cube(ax, detector, vertices, cube_faces, face_names):
     """
     Display the detector faces on the 3D cube - only showing specific faces.
-    
-    Args:
-        ax: Matplotlib 3D axis
-        detector: Cube detector
-        vertices: Cube vertices
-        cube_faces: Cube face indices
-        face_names: Face names
     """
-    # We specifically want to highlight the -X face for the rainbow
-    # This is the YZ plane at negative X
-    
     # For each face, check if we want to display it
     for i, (face, name) in enumerate(zip(cube_faces, face_names)):
         # Get the RGB image for this face
@@ -239,37 +227,47 @@ def display_detector_on_cube(ax, detector, vertices, cube_faces, face_names):
             continue
         
         # Get the 4 corners of this face
-        x = [vertices[j][0] for j in face]
-        y = [vertices[j][1] for j in face]
-        z = [vertices[j][2] for j in face]
+        x_face = [vertices[j][0] for j in face]
+        y_face = [vertices[j][1] for j in face]
+        z_face = [vertices[j][2] for j in face]
         
         # For the -X face (which should show the rainbow), place it on the YZ plane
         if name == "-X":
-            # This is the face we want to show the rainbow on
+            custom_face_img = np.zeros_like(face_img)
+            
+           
+            
+            # Draw the face with custom image
             Y, Z = np.meshgrid(
-                np.linspace(min(y), max(y), face_img.shape[1]),
-                np.linspace(min(z), max(z), face_img.shape[0])
+            np.linspace(min(y_face), max(y_face), custom_face_img.shape[1]),
+            np.linspace(min(z_face), max(z_face), custom_face_img.shape[0])
             )
-            X = np.ones_like(Y) * x[0]
-            ax.plot_surface(X, Y, Z, facecolors=face_img, shade=False, alpha=0.9, zorder=2)
+            X = np.ones_like(Y) * x_face[0]
+            # Move this plane to make sure it's behind the sphere
+            X -= 0
+            ax.plot_surface(X, Y, Z, facecolors=custom_face_img, shade=False, alpha=0.9, zorder=2)
+    
         
-        # Draw the bottom face (-Z) to provide context
+        # For the XY plane, ensure it's behind the sphere by placing it at negative Z
         elif name == "-Z":
             X, Y = np.meshgrid(
-                np.linspace(min(x), max(x), face_img.shape[1]),
-                np.linspace(min(y), max(y), face_img.shape[0])
+                np.linspace(min(x_face), max(x_face), face_img.shape[1]),
+                np.linspace(min(y_face), max(y_face), face_img.shape[0])
             )
-            Z = np.ones_like(X) * z[0]
+            Z = np.ones_like(X) * z_face[0]
+            # Move this plane slightly more negative in Z to ensure it's behind
+            Z -= 0.035  # Adjust this value as needed
             ax.plot_surface(X, Y, Z, facecolors=face_img, shade=False, alpha=0.9, zorder=1)
-        
+            
         # Right side face (+Y)
         elif name == "+Y":
             X, Z = np.meshgrid(
-                np.linspace(min(x), max(x), face_img.shape[1]),
-                np.linspace(min(z), max(z), face_img.shape[0])
+                np.linspace(min(x_face), max(x_face), face_img.shape[1]),
+                np.linspace(min(z_face), max(z_face), face_img.shape[0])
             )
-            Y = np.ones_like(X) * y[0]
+            Y = np.ones_like(X) * y_face[0]
             ax.plot_surface(X, Y, Z, facecolors=face_img, shade=False, alpha=0.9, zorder=1)
+
 
 def visualize_3d_rainbow_with_cube(droplet, photons, images, detector):
     """
@@ -509,22 +507,6 @@ def visualize_rainbow_zoomed_out(droplet, photons, face_images):
     ax.set_xlim(-6, 6)
     ax.set_ylim(-6, 6)
     ax.set_zlim(-6, 6)
-    
-    # Add title
-    plt.title('Rainbow Formation (Zoomed Out)', fontsize=14)
-    
-    # Save figure
-    plt.savefig('rainbow_zoomed_out.png', dpi=300, bbox_inches='tight')
-    plt.show()
-    
-    # Also show the -X face image separately in high resolution
-    if "-X" in face_images:
-        plt.figure(figsize=(10, 10))
-        plt.imshow(face_images["-X"])
-        plt.title('Rainbow on -X Face (High Resolution)')
-        plt.colorbar(label='Intensity')
-        plt.savefig('rainbow_face_detail.png', dpi=300)
-        plt.show()
 
 if __name__ == "__main__":
     simulate_3d_rainbow_monte_carlo()
